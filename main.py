@@ -14,7 +14,11 @@ async def lifespan(app: FastAPI):
     # Startup
     global jagriti_service
     jagriti_service = JagritiService()
-    await jagriti_service.initialize()
+    try:
+        await jagriti_service.initialize()
+    except Exception:
+        # Do not block startup; service lazily loads data on first request
+        pass
     app.state.jagriti_service = jagriti_service
     yield
     # Shutdown

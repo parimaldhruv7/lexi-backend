@@ -47,9 +47,11 @@ class JagritiService:
                 'Upgrade-Insecure-Requests': '1',
             }
         )
-        
-        # Load states data
-        await self._load_states()
+        # Attempt to load states, but don't fail startup if portal is unreachable
+        try:
+            await self._load_states()
+        except Exception as e:
+            logger.warning(f"Skipping states preload due to error: {e}")
     
     async def cleanup(self):
         """Clean up resources"""
@@ -64,14 +66,16 @@ class JagritiService:
                     if response.status == 200:
                         return response
                     elif response.status == 429:  # Rate limited
-                        await asyncio.sleep(settings.DELAY_BETWEEN_REQUESTS * (attempt + 1))
+                        backoff = settings.DELAY_BETWEEN_REQUESTS * (2 ** attempt)
+                        await asyncio.sleep(backoff)
                         continue
                     else:
                         response.raise_for_status()
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 if attempt == settings.MAX_RETRIES - 1:
                     raise
-                await asyncio.sleep(settings.DELAY_BETWEEN_REQUESTS * (attempt + 1))
+                backoff = settings.DELAY_BETWEEN_REQUESTS * (2 ** attempt)
+                await asyncio.sleep(backoff)
         
         raise Exception("Max retries exceeded")
     
@@ -111,6 +115,8 @@ class JagritiService:
     
     async def get_states(self) -> List[State]:
         """Get list of all available states"""
+        if not self.states_cache:
+            await self._load_states()
         return list(self.states_cache.values())
     
     async def get_commissions(self, state_id: str) -> List[Commission]:
